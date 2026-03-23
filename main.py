@@ -1,12 +1,21 @@
 import argparse
 import os
+import torch
+
+# from wandb.integration.torch.wandb_torch import torch
+CUDA_VISIBLE_DEVICES = 0
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["NCCL_P2P_DISABLE"] = "1"
+os.environ["NCCL_SHM_DISABLE"] = "1"  # Added to fix shared memory (os error 19) in containers
+os.environ["NCCL_IB_DISABLE"] = "1"   # Added to disable InfiniBand which can also cause this
 from trackit.core.boot.main import main
 
 
 def setup_arg_parser():
     parser = argparse.ArgumentParser('Set runtime parameters', add_help=False)
-    parser.add_argument('method_name', type=str, help='Method name')
-    parser.add_argument('config_name', type=str, help='Config name')
+    parser.add_argument('--method_name', type=str, help='Method name')
+    parser.add_argument('--config_name', type=str, help='Config name')
     parser.add_argument('--output_dir', help='path where to save')
     parser.add_argument('--dry_run', action='store_true', help='do not save checkpoints and results')
     parser.add_argument('--device', default='cuda', help='device to use for training / testing')
@@ -15,9 +24,10 @@ def setup_arg_parser():
     parser.add_argument('--resume', help='resume from checkpoint')
     parser.add_argument('--quiet', action='store_true', help='do not generate unnecessary messages.')
 
-    parser.add_argument('--pin_memory', action='store_true', help='move tensors to pinned memory before transferring to GPU')
+    parser.add_argument('--pin_memory', action='store_true',
+                        help='move tensors to pinned memory before transferring to GPU')
 
-    parser.add_argument('--disable_wandb', action='store_true', help='disable wandb')
+    parser.add_argument('--disable_wandb', action='store_true', default=True, help='disable wandb')
     parser.add_argument('--wandb_run_offline', action='store_true', help='run wandb offline')
     parser.add_argument('--enable_stack_trace_on_error', action='store_true', help='enable stack trace on error')
     parser.add_argument('--allow_non_master_node_print', action='store_true', help='enable logging on non-master nodes')
@@ -35,7 +45,7 @@ def setup_arg_parser():
     parser.add_argument('--distributed_node_rank', type=int, default=0)
     parser.add_argument('--distributed_nnodes', type=int, default=1)
     parser.add_argument('--distributed_nproc_per_node', type=int, default=1)
-    parser.add_argument('--distributed_do_spawn_workers', action='store_true')
+    parser.add_argument('--distributed_do_spawn_workers', action='store_true', default=False)
 
     parser.add_argument('--wandb_distributed_aware', action='store_true')
     parser.add_argument('--kill_other_python_processes', action='store_true')
@@ -45,8 +55,23 @@ def setup_arg_parser():
     return parser
 
 
+# GOLA-B
+# python.. / main.py
+# GOLA
+# dinov2 - -distributed_nproc_per_node
+# "${GPU_NUM}" - -distributed_do_spawn_workers - -disable_wandb - -weight_path $weight_path - -output_dir = "$output_dir" | & tee - a
+# "$output_dir/train_stdout-$timestamp.log"
 if __name__ == '__main__':
+
+    torch.cuda.set_device(0)
     parser = setup_arg_parser()
     args = parser.parse_args()
+    args.method_name = 'GOLA'
+    args.config_name = 'dinov2'
+    args.output_dir = './output'
+    args.distributed_nproc_per_node = 1
+    args.disable_wandb = True
+    args.weight_path = "../pretrained_models/base_gola_r16_g8.bin"
+
     args.root_path = os.path.dirname(os.path.abspath(__file__))
     main(args)
